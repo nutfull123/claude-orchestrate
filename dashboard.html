@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Orchestra Control</title>
+<style>
+:root {
+  --bg: #060a13; --panel: #0b1220; --panel2: #0f1829; --line: #1c2a44; --ink: #e6edf7; --muted: #7d8ba3; --dim: #4a5874;
+  --haiku: #22d3ee; --sonnet: #34d399; --opus: #a78bfa; --fable: #f472b6; --lead: #fbbf24;
+  --run: #38bdf8; --review: #c084fc; --done: #34d399; --fail: #f87171; --wait: #475569;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--ink); }
+body {
+  font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans Thai", "Sukhumvit Set", sans-serif;
+  background-image: linear-gradient(rgba(56,189,248,.05) 1px, transparent 1px), linear-gradient(90deg, rgba(56,189,248,.05) 1px, transparent 1px);
+  background-size: 32px 32px; min-height: 100vh;
+}
+.wrap { max-width: 1500px; margin: 0 auto; padding: 20px 16px 48px; }
+header { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; justify-content: space-between; }
+.brand { font: 600 12px var(--mono); letter-spacing: .3em; color: var(--run); text-shadow: 0 0 12px rgba(56,189,248,.7); }
+h1 { margin: 4px 0 0; font-size: 20px; font-weight: 600; max-width: 900px; }
+.stats { display: flex; gap: 8px; flex-wrap: wrap; }
+.stat { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; min-width: 92px; }
+.stat b { display: block; font: 600 18px var(--mono); }
+.stat span { font: 11px var(--mono); color: var(--muted); letter-spacing: .08em; text-transform: uppercase; }
+.bar { display: flex; gap: 3px; margin: 16px 0 6px; height: 8px; }
+.bar i { flex: 1; border-radius: 2px; background: var(--wait); opacity: .5; }
+.bar i.running { background: var(--run); opacity: 1; box-shadow: 0 0 10px var(--run); animation: pulse 1.2s ease-in-out infinite; }
+.bar i.review { background: var(--review); opacity: 1; box-shadow: 0 0 8px var(--review); }
+.bar i.done { background: var(--done); opacity: 1; box-shadow: 0 0 8px rgba(52,211,153,.6); }
+.bar i.failed { background: var(--fail); opacity: 1; }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font: 11px var(--mono); color: var(--muted); }
+.legend em { font-style: normal; display: inline-flex; align-items: center; gap: 6px; }
+.legend em::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--c); box-shadow: 0 0 6px var(--c); }
+.stage { position: relative; margin-top: 18px; overflow-x: auto; padding: 8px 2px 16px; }
+#graph { position: relative; display: flex; gap: 56px; align-items: flex-start; min-width: min-content; z-index: 1; }
+svg#edges { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 0; overflow: visible; }
+.edge { fill: none; stroke: var(--line); stroke-width: 1.5; }
+.edge.live { stroke: var(--c); stroke-width: 2; stroke-dasharray: 6 8; filter: drop-shadow(0 0 4px var(--c)); animation: flow .8s linear infinite; }
+.edge.done { stroke: var(--c); opacity: .45; }
+.col { display: flex; flex-direction: column; gap: 14px; width: 330px; flex: none; }
+.col h2 { margin: 0 0 2px; font: 600 11px var(--mono); letter-spacing: .2em; color: var(--muted); text-transform: uppercase; }
+.col h2 b { color: var(--run); font-weight: 600; }
+.hubcol { width: 190px; align-items: center; justify-content: center; gap: 30px; padding-top: 40px; }
+.user { font: 600 12px var(--mono); letter-spacing: .15em; padding: 10px 18px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--muted); }
+.hub { width: 150px; height: 150px; transform: rotate(45deg); border: 2px solid var(--lead); border-radius: 18px; background: rgba(251,191,36,.06);
+  box-shadow: 0 0 22px rgba(251,191,36,.35), inset 0 0 22px rgba(251,191,36,.15); display: grid; place-items: center; }
+.hub > div { transform: rotate(-45deg); text-align: center; }
+.hub b { display: block; font: 700 13px var(--mono); letter-spacing: .12em; color: var(--lead); text-shadow: 0 0 10px rgba(251,191,36,.8); }
+.hub span { font: 11px var(--mono); color: var(--muted); }
+.hub.busy { animation: hubglow 1.6s ease-in-out infinite; }
+.card { position: relative; background: linear-gradient(180deg, var(--panel2), var(--panel)); border: 1px solid var(--line); border-radius: 12px;
+  padding: 12px 14px; overflow: hidden; transition: border-color .3s, box-shadow .3s; }
+.card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--c); box-shadow: 0 0 12px var(--c); }
+.card.running { border-color: var(--c); box-shadow: 0 0 0 1px var(--c), 0 0 24px -4px var(--c); }
+.card.running::after { content: ""; position: absolute; left: -40%; top: 0; height: 2px; width: 40%; background: linear-gradient(90deg, transparent, var(--c), transparent); animation: scan 1.4s linear infinite; }
+.card.review { border-color: var(--review); }
+.card.failed { border-color: var(--fail); box-shadow: 0 0 18px -6px var(--fail); }
+.card.pending { opacity: .62; }
+.top { display: flex; align-items: center; gap: 8px; }
+.id { font: 600 12px var(--mono); color: var(--muted); }
+.model { margin-left: auto; font: 600 11px var(--mono); color: var(--c); border: 1px solid var(--c); border-radius: 6px; padding: 1px 7px; text-shadow: 0 0 8px var(--c); }
+.title { font-weight: 600; margin: 6px 0 8px; }
+.row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font: 12px var(--mono); color: var(--muted); }
+.pill { display: inline-flex; align-items: center; gap: 6px; font: 600 11px var(--mono); padding: 2px 8px; border-radius: 999px; border: 1px solid currentColor; letter-spacing: .05em; }
+.pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; box-shadow: 0 0 8px currentColor; }
+.s-running { color: var(--run); } .s-running::before { animation: pulse 1s infinite; }
+.s-review { color: var(--review); } .s-done { color: var(--done); } .s-failed { color: var(--fail); } .s-pending, .s-skipped { color: var(--dim); }
+.now { margin-top: 8px; font: 12px var(--mono); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.now .k { color: var(--c); margin-right: 6px; }
+.verified { color: var(--done); } .mismatch { color: var(--fail); }
+details { margin-top: 10px; border-top: 1px dashed var(--line); padding-top: 8px; }
+summary { cursor: pointer; list-style: none; font: 600 11px var(--mono); letter-spacing: .12em; color: var(--muted); text-transform: uppercase; display: flex; align-items: center; gap: 6px; }
+summary::-webkit-details-marker { display: none; }
+summary::before { content: "▸"; color: var(--c); transition: transform .2s; }
+details[open] summary::before { transform: rotate(90deg); }
+summary:hover { color: var(--ink); }
+summary:focus-visible { outline: 1px solid var(--run); outline-offset: 2px; }
+.sec { margin-top: 10px; }
+.sec h3 { margin: 0 0 4px; font: 600 10px var(--mono); letter-spacing: .18em; color: var(--c); text-transform: uppercase; }
+.sec p { margin: 0; font-size: 13px; color: #c9d4e5; }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font: 12px var(--mono); color: #c9d4e5; }
+.kv span:nth-child(odd) { color: var(--muted); }
+pre { margin: 0; max-height: 220px; overflow: auto; white-space: pre-wrap; word-break: break-word; font: 12px/1.5 var(--mono); color: #c9d4e5;
+  background: rgba(0,0,0,.35); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+.log { list-style: none; margin: 0; padding: 0; max-height: 260px; overflow: auto; font: 12px/1.45 var(--mono); }
+.log li { display: grid; grid-template-columns: 58px 74px 1fr; gap: 6px; padding: 3px 0; border-bottom: 1px solid rgba(28,42,68,.6); }
+.log .t { color: var(--dim); }
+.log .k { color: var(--c); font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+.log .x { color: #c9d4e5; word-break: break-word; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.log li.report .x { -webkit-line-clamp: 12; }
+.log li.report .k { color: var(--done); }
+.events { margin-top: 26px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+.events h2 { margin: 0 0 8px; font: 600 11px var(--mono); letter-spacing: .2em; color: var(--muted); }
+.events ol { list-style: none; margin: 0; padding: 0; max-height: 180px; overflow: auto; font: 12px var(--mono); }
+.events li { padding: 2px 0; color: #c9d4e5; } .events li span { color: var(--dim); margin-right: 10px; }
+.empty { color: var(--muted); font: 13px var(--mono); padding: 40px 0; }
+.err { color: var(--fail); }
+@keyframes pulse { 50% { opacity: .35; } }
+@keyframes scan { to { left: 100%; } }
+@keyframes flow { to { stroke-dashoffset: -28; } }
+@keyframes hubglow { 50% { box-shadow: 0 0 36px rgba(251,191,36,.6), inset 0 0 28px rgba(251,191,36,.25); } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; } }
+@media (max-width: 700px) { .col { width: 280px; } #graph { gap: 32px; } .hubcol { width: 150px; } .hub { width: 110px; height: 110px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <div class="brand">◆ ORCHESTRA · CONTROL</div>
+      <h1 id="goal">กำลังเชื่อมต่อ…</h1>
+    </div>
+    <div class="stats" id="stats"></div>
+  </header>
+  <div class="bar" id="bar"></div>
+  <div class="legend">
+    <em style="--c:var(--haiku)">haiku</em><em style="--c:var(--sonnet)">sonnet</em><em style="--c:var(--opus)">opus</em><em style="--c:var(--lead)">lead</em>
+    <em style="--c:var(--run)">กำลังทำ</em><em style="--c:var(--review)">รอ lead ตรวจ</em><em style="--c:var(--done)">ผ่าน</em><em style="--c:var(--fail)">ไม่ผ่าน</em>
+  </div>
+  <div class="stage" id="stage">
+    <svg id="edges"></svg>
+    <div id="graph"></div>
+  </div>
+  <section class="events" aria-live="polite">
+    <h2>EVENT LOG</h2>
+    <ol id="events"></ol>
+  </section>
+</div>
+<script>
+const MODEL_C = { haiku: "var(--haiku)", sonnet: "var(--sonnet)", opus: "var(--opus)", fable: "var(--fable)" };
+const TH = { pending: "รอคิว", running: "กำลังทำ", review: "รอ lead ตรวจ", done: "ผ่าน", failed: "ไม่ผ่าน", skipped: "ข้าม" };
+const KIND = { Bash: "RUN", Read: "READ", Edit: "EDIT", Write: "WRITE", Grep: "GREP", Glob: "FIND", WebFetch: "WEB", WebSearch: "SEARCH", say: "NOTE", report: "REPORT" };
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fam = m => { m = String(m || ""); for (const k of Object.keys(MODEL_C)) if (m.includes(k)) return k; return ""; };
+const colorOf = t => t.agent === "lead" ? "var(--lead)" : (MODEL_C[fam((t.actual || {}).model || t.model)] || "var(--run)");
+let plan = null, act = {}, lastKey = "", events = [], prevStatus = {};
+
+function secs(t) {
+  const p = k => t[k] ? Date.parse(t[k]) : null;
+  const s = p("started"); if (!s) return null;
+  const e = p("finished") || (t.status === "review" ? p("returned") : null) || Date.now();
+  return Math.max(0, Math.round((e - s) / 1000));
+}
+const fmt = n => n == null ? "" : n < 60 ? n + "s" : Math.floor(n / 60) + "m" + String(n % 60).padStart(2, "0") + "s";
+
+function waves(tasks) {
+  const by = Object.fromEntries(tasks.map(t => [t.id, t])), depth = {};
+  const d = (id, seen = new Set()) => {
+    if (depth[id] != null) return depth[id];
+    if (seen.has(id) || !by[id]) return 0;
+    seen.add(id);
+    return depth[id] = Math.max(-1, ...(by[id].deps || []).map(x => d(x, seen))) + 1;
+  };
+  tasks.forEach(t => d(t.id));
+  const cols = []; tasks.forEach(t => (cols[depth[t.id]] ||= []).push(t)); return cols.filter(Boolean);
+}
+
+function card(t) {
+  const s = t.status || "pending", a = t.actual, live = act[t.id];
+  const shown = a ? `${String(a.model).replace("claude-", "")} · ${a.effort}` : t.agent === "lead" ? "opus · lead" : `${t.model || "?"} · ${t.effort || "?"}`;
+  const ver = a ? (t.verified ? `<span class="verified">✓ ยืนยันจาก transcript</span>` : `<span class="mismatch">⚠ ไม่ตรงแผน</span>`) : "";
+  const last = live && live.steps.length ? live.steps[live.steps.length - 1] : null;
+  const now = s === "running" && last ? `<div class="now"><span class="k">${esc(KIND[last.kind] || last.kind)}</span>${esc(last.text)}</div>` : "";
+  const p = t.planned || {};
+  const steps = live ? live.steps.map(x => `<li class="${x.kind === "report" ? "report" : ""}"><span class="t">${esc(x.t)}</span><span class="k">${esc(KIND[x.kind] || x.kind)}</span><span class="x">${esc(x.text)}</span></li>`).join("") : "";
+  return `<article class="card ${s}" id="c-${esc(t.id)}" style="--c:${colorOf(t)}">
+    <div class="top"><span class="id">${esc(t.id)} · ${esc(t.agent || "")}</span><span class="model">${esc(shown)}</span></div>
+    <div class="title">${esc(t.title)}</div>
+    <div class="row"><span class="pill s-${s}">${TH[s] || s}</span>${secs(t) != null ? `<span>⏱ ${fmt(secs(t))}</span>` : ""}${ver}</div>
+    ${now}
+    <details data-id="${esc(t.id)}">
+      <summary>รายละเอียด${live ? ` · ${live.total_steps} ขั้น` : ""}</summary>
+      ${t.agent !== "lead" ? `<div class="sec"><h3>กิจกรรมสด</h3>${steps ? `<ul class="log">${steps}</ul>` : `<p>${s === "pending" ? "ยังไม่เริ่ม" : "ยังไม่มีข้อมูลจาก transcript"}</p>`}</div>` : ""}
+      ${t.why ? `<div class="sec"><h3>ทำไมเลือกโมเดลนี้</h3><p>${esc(t.why)}</p></div>` : ""}
+      ${t.check ? `<div class="sec"><h3>เกณฑ์ตรวจ</h3><p>${esc(t.check)}</p></div>` : ""}
+      ${t.brief_th ? `<div class="sec"><h3>งานนี้สั่งอะไร (ภาษาไทย)</h3><pre>${esc(t.brief_th)}</pre></div>` : ""}
+      ${t.brief ? `<div class="sec"><h3>prompt ที่คุณอนุมัติ (prompt-master)</h3><pre>${esc(t.brief)}</pre></div>` : ""}
+      ${t.sent_prompt && t.sent_prompt.trim() !== (t.brief || "").trim() ? `<div class="sec"><h3>ส่วนที่ต่อท้ายตอนส่ง (ผลจากงานก่อนหน้า)</h3><pre>${esc(t.sent_prompt.trim().slice((t.brief || "").trim().length))}</pre></div>` : ""}
+      <div class="sec"><h3>แผน vs ใช้จริง</h3><div class="kv">
+        <span>แผน</span><span>${esc(p.model || t.model || "-")} · ${esc(p.effort || t.effort || "-")}</span>
+        <span>ใช้จริง</span><span>${a ? esc(a.model) + " · " + esc(a.effort) : live && live.model ? esc(live.model) + " (กำลังรัน)" : "-"}</span>
+        <span>turns</span><span>${a ? a.turns : live ? live.turns : "-"}</span>
+        <span>tools</span><span>${a ? a.tool_uses : "-"}</span>
+        <span>out tokens</span><span>${a ? a.out_tokens : live ? live.out_tokens : "-"}</span>
+        <span>รอ</span><span>${esc((t.deps || []).join(", ") || "-")}</span>
+      </div></div>
+      ${t.note ? `<div class="sec"><h3>ผลลัพธ์</h3><p>${esc(t.note)}</p></div>` : ""}
+    </details>
+  </article>`;
+}
+
+function render() {
+  const tasks = plan.tasks || [];
+  document.getElementById("goal").textContent = plan.goal || "Orchestra";
+  const n = st => tasks.filter(t => (t.status || "pending") === st).length;
+  const proven = tasks.filter(t => t.actual).length, ok = tasks.filter(t => t.actual && t.verified).length;
+  const starts = tasks.map(t => Date.parse(t.started)).filter(Boolean);
+  const active = tasks.some(t => ["running", "review", "pending"].includes(t.status || "pending"));
+  const ends = tasks.map(t => Date.parse(t.finished)).filter(Boolean);
+  const endAt = active || !ends.length ? Date.now() : Math.max(...ends);  // freeze the clock once the run is over
+  const elapsed = starts.length ? Math.round((endAt - Math.min(...starts)) / 1000) : null;
+  const tokens = tasks.reduce((s, t) => s + ((t.actual || {}).out_tokens || (act[t.id] || {}).out_tokens || 0), 0);
+  document.getElementById("stats").innerHTML = [
+    [`${n("done")}/${tasks.length}`, "done"], [n("running"), "running"], [n("review"), "checking"],
+    [`${ok}/${proven}`, "verified"], [fmt(elapsed) || "-", "elapsed"], [tokens.toLocaleString(), "out tokens"]
+  ].map(([v, l]) => `<div class="stat"><b>${v}</b><span>${l}</span></div>`).join("");
+  document.getElementById("bar").innerHTML = tasks.map(t => `<i class="${t.status || "pending"}" title="${esc(t.id)}"></i>`).join("");
+
+  const open = new Set([...document.querySelectorAll("details[open]")].map(d => d.dataset.id));
+  const scroll = Object.fromEntries([...document.querySelectorAll("details[open] .log")].map(l => [l.closest("details").dataset.id, l.scrollTop]));
+  const busy = tasks.some(t => ["running", "review"].includes(t.status));
+  const cols = waves(tasks);
+  document.getElementById("graph").innerHTML = tasks.length ? `
+    <section class="col hubcol"><div class="user">YOU</div><div class="hub ${busy ? "busy" : ""}" id="hub"><div><b>ORCHESTRATOR</b><span>opus · lead</span></div></div></section>
+    ${cols.map((col, i) => `<section class="col"><h2>wave ${i + 1}${col.length > 1 ? " · <b>parallel</b>" : ""}</h2>${col.map(card).join("")}</section>`).join("")}`
+    : `<div class="empty">รอแผนงาน .orchestra/plan.json …</div>`;
+  open.forEach(id => { const d = document.querySelector(`details[data-id="${CSS.escape(id)}"]`); if (d) d.open = true; });
+  Object.entries(scroll).forEach(([id, top]) => { const l = document.querySelector(`details[data-id="${CSS.escape(id)}"] .log`); if (l) l.scrollTop = top; });
+  edges(tasks);
+}
+
+function edges(tasks) {
+  const svg = document.getElementById("edges"), stage = document.getElementById("stage"), box = stage.getBoundingClientRect();
+  svg.setAttribute("width", stage.scrollWidth); svg.setAttribute("height", stage.scrollHeight);
+  const hub = document.getElementById("hub"); if (!hub) { svg.innerHTML = ""; return; }
+  const pt = (el, side) => { const r = el.getBoundingClientRect(); return [(side === "r" ? r.right : r.left) - box.left + stage.scrollLeft, r.top + Math.min(r.height / 2, 34) - box.top]; };
+  const hr = hub.getBoundingClientRect(), H = [hr.left + hr.width / 2 - box.left + stage.scrollLeft + hr.width * 0.35, hr.top + hr.height / 2 - box.top];
+  const path = (a, b, t) => {
+    const mx = (a[0] + b[0]) / 2, cls = t.status === "running" ? "live" : t.status === "done" ? "done" : "";
+    return `<path class="edge ${cls}" style="--c:${colorOf(t)}" d="M${a[0]},${a[1]} C${mx},${a[1]} ${mx},${b[1]} ${b[0]},${b[1]}"/>`;
+  };
+  svg.innerHTML = tasks.flatMap(t => {
+    const el = document.getElementById("c-" + t.id); if (!el) return [];
+    const deps = (t.deps || []).filter(d => document.getElementById("c-" + d));
+    return deps.length ? deps.map(d => path(pt(document.getElementById("c-" + d), "r"), pt(el, "l"), t)) : [path(H, pt(el, "l"), t)];
+  }).join("");
+}
+
+function logEvents(tasks) {
+  const now = new Date().toLocaleTimeString("th-TH", { hour12: false });
+  tasks.forEach(t => {
+    const s = t.status || "pending";
+    if (prevStatus[t.id] && prevStatus[t.id] !== s) events.unshift(`<li><span>${now}</span>${esc(t.id)} ${esc(t.title || "")} → <b class="s-${s}">${TH[s] || s}</b>${t.note && s !== "running" ? " · " + esc(t.note) : ""}</li>`);
+    prevStatus[t.id] = s;
+  });
+  events = events.slice(0, 80);
+  document.getElementById("events").innerHTML = events.join("") || `<li><span>${now}</span>เริ่มติดตาม</li>`;
+}
+
+async function poll() {
+  try {
+    const [p, a] = await Promise.all([fetch("plan.json", { cache: "no-store" }).then(r => r.json()), fetch("activity.json", { cache: "no-store" }).then(r => r.json()).catch(() => ({}))]);
+    const key = JSON.stringify([p, a]);
+    plan = p; act = a;
+    if (key !== lastKey) { lastKey = key; logEvents(p.tasks || []); render(); }
+    else if ((p.tasks || []).some(t => t.status === "running")) { render(); }  // keep timers ticking
+  } catch (e) {
+    document.getElementById("goal").innerHTML = `<span class="err">เชื่อมต่อ server ไม่ได้ (orch.py serve หยุดแล้ว?)</span>`;
+  }
+}
+window.addEventListener("resize", () => plan && edges(plan.tasks || []));
+document.getElementById("stage").addEventListener("toggle", () => plan && edges(plan.tasks || []), true);
+poll(); setInterval(poll, 1500);
+</script>
+</body>
+</html>
